@@ -92,29 +92,17 @@ preProcess(myTraining, method="knnImpute")
 fit1 <- rpart(classe ~ ., data=myTraining, method="class")
 fancyRpartPlot(fit1)
 predict1 <- predict(fit1, myTesting, type = "class")
-confusionMatrix(predict1, myTesting$classe)$overall[1] #accuracy
+confusionMatrix(predict1, myTesting$classe)$overall[1] #accuracy of 0.7295
 ```
 
 ##Random Forest
 ```{r}
-fit2 <- train(classe ~ ., data=myTraining, method="rf")
-predict2 <- predict(fit2, myTesting, type = "class")
-confusionMatrix(predict2, myTesting$classe)$overall[1] #accuracy
-```
-
-##Boosted Trees
-```{r}
-fit3 <- train(classe ~ ., data=myTraining, method="gbm")
-predict3 <- predict(fit3, myTesting, type = "class")
-confusionMatrix(predict3, myTesting$classe)$overall[1] #accuracy
-```
-
-##Linear Discriminant Analysis
-```{r}
-fit4 <- train(classe ~ ., data=myTraining, method="lda")
-predict4 <- predict(fit4, myTesting, type = "class")
-confusionMatrix(predict4, myTesting$classe)$overall[1] #accuracy
+fit2 <- randomForest(classe ~. , data=myTraining)
+predict2 <- predict(fitt2, myTesting, type = "class")
+confusionMatrix(predict2, myTesting$classe)$overall[1] #accuracy of 0.8193
 ```
 
 
+#Conclussion
+The Random Forest model was the best one of all tested models, as it was expected, and it is the recomended model for future predictions for this specific dataset.
 
