@@ -1,7 +1,7 @@
 ---
 title: "Practical Machine Learning - Course Project"
 author: "Rodrigo Rivera"
-date: "August 28, 2016"
+date: "October 3, 2016"
 output: html_document
 ---
 
@@ -29,9 +29,8 @@ library(e1071)
 library(randomForest)
 library(rattle)
 ```
-
-##Download The Data
-```{r}
+##Download Data
+```{r setup, include=FALSE}
 trainUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
 train <- read.csv(url(trainUrl), na.strings=c("NA","#DIV/0!",""))
 testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
@@ -39,70 +38,130 @@ test <- read.csv(url(testUrl), na.strings=c("NA","#DIV/0!",""))
 dateDownloaded <- today()
 ```
 
-##Creating the Training Data Partition
+#Cleaning Data
+##Handle NAs
+```{r}
+colnames_train <- names(train)
+colnames_test <- names(test)
+
+nonNAs <- function(x) {
+    as.vector(apply(x, 2, function(x) length(which(!is.na(x)))))
+}
+
+colcnts <- nonNAs(train)
+drops <- c()
+for (cnt in 1:length(colcnts)) {
+    if (colcnts[cnt] < nrow(train)) {
+        drops <- c(drops, colnames_train[cnt])
+    }
+}
+
+train <- train[,!(names(train) %in% drops)]
+train <- train[,8:length(colnames(train))]
+
+test <- test[,!(names(test) %in% drops)]
+test <- test[,8:length(colnames(test))]
+```
+##Finding Near Zervo Variance Variables
+```{r}
+nzvTrain <- nearZeroVar(train, saveMetrics=TRUE)
+table(nzvTrain$zeroVar)
+table(nzvTrain$nzv)
+```
+Since all are false, no variables are deleted.
+
+##Creating Sets
+The data already contains testing and triaining set, but I will make a new testing set, because the testing set's dims are much smaller than the training set.
 ```{r}
 inTrain <- createDataPartition(y=train$classe, p=0.6, list=FALSE)
-training <- train[inTrain, ]
-testing <- train[-inTrain, ]
-dim(training)
-dim(testing)
+training <- train[inTrain,]
+testing <- train[-inTrain,]
 ```
 
-##Cleaning The Data Set
-Finding and eliminating Near Zero Variance variables
+
+#Modeling
+In this case the analysis will be done with two models: Classification Trees and Ranfom Forest
+##Classification Trees
+Model
 ```{r}
-DataNZV <- nearZeroVar(training, saveMetrics=TRUE)
-NZV <- DataNZV$nzv==T
-myNZVvars <- names(myTraining) %in% c("new_window", "kurtosis_roll_belt", "kurtosis_picth_belt",
-"kurtosis_yaw_belt", "skewness_roll_belt", "skewness_roll_belt.1", "skewness_yaw_belt",
-"max_yaw_belt", "min_yaw_belt", "amplitude_yaw_belt", "avg_roll_arm", "stddev_roll_arm",
-"var_roll_arm", "avg_pitch_arm", "stddev_pitch_arm", "var_pitch_arm", "avg_yaw_arm",
-"stddev_yaw_arm", "var_yaw_arm", "kurtosis_roll_arm", "kurtosis_picth_arm",
-"kurtosis_yaw_arm", "skewness_roll_arm", "skewness_pitch_arm", "skewness_yaw_arm",
-"max_roll_arm", "min_roll_arm", "min_pitch_arm", "amplitude_roll_arm", "amplitude_pitch_arm",
-"kurtosis_roll_dumbbell", "kurtosis_picth_dumbbell", "kurtosis_yaw_dumbbell", "skewness_roll_dumbbell",
-"skewness_pitch_dumbbell", "skewness_yaw_dumbbell", "max_yaw_dumbbell", "min_yaw_dumbbell",
-"amplitude_yaw_dumbbell", "kurtosis_roll_forearm", "kurtosis_picth_forearm", "kurtosis_yaw_forearm",
-"skewness_roll_forearm", "skewness_pitch_forearm", "skewness_yaw_forearm", "max_roll_forearm",
-"max_yaw_forearm", "min_roll_forearm", "min_yaw_forearm", "amplitude_roll_forearm",
-"amplitude_yaw_forearm", "avg_roll_forearm", "stddev_roll_forearm", "var_roll_forearm",
-"avg_pitch_forearm", "stddev_pitch_forearm", "var_pitch_forearm", "avg_yaw_forearm",
-"stddev_yaw_forearm", "var_yaw_forearm")
-myTraining <- myTraining[!myNZVvars]
-dim(myTraining)
-clean1 <- colnames(myTraining)
-clean2 <- colnames(myTraining[, -58])
-myTesting <- myTesting[clean1]
-testing <- testing[clean2]
+fit1 <- train(training$classe ~ ., data = training, method="rpart")
+print(fit1, digits=3)
+print(fit1$finalModel, digits=3)
+fancyRpartPlot(fit1$finalModel)
 ```
 
-Eliminating first column of the dataset because it may intefere with ML Algorithms
+Testing
 ```{r}
-myTraining <- myTraining[c(-1)]
+set.seed(500)
+predict <- predict(fit1, newdata=testing)
+print(confusionMatrix(predict, testing$classe)$overall[1], digits=4)
+```
+This model shows a very poor accuracy (49.22%). Will try this same model using crossed validation and preprocessing
+
+Using Preprocess
+```{r}
+fit1pp <- train(training$classe ~ .,  preProcess=c("center", "scale"), data = training, method="rpart")
+print(fit1pp, digits=3)
+set.seed(500)
+predict <- predict(fit1pp, newdata=testing)
+print(confusionMatrix(predict, testing$classe)$overall[1], digits=4)
+```
+Same accuracy (49.22%)
+
+Using Crossed Validation
+```{r}
+fit1cv <- train(training$classe ~ .,  trControl=trainControl(method = "cv", number = 4), data = training, method="rpart")
+print(fit1cv, digits=3)
+set.seed(500)
+predict <- predict(fit1cv, newdata=testing)
+print(confusionMatrix(predict, testing$classe)$overall[1], digits=4)
 ```
 
-Eliminating NAs and changing them for the mean
+Using Both
 ```{r}
-preProcess(myTraining, method="knnImpute")
-```
-
-#Predictions
-##Decision Tree
-```{r}
-fit1 <- rpart(classe ~ ., data=myTraining, method="class")
-fancyRpartPlot(fit1)
-predict1 <- predict(fit1, myTesting, type = "class")
-confusionMatrix(predict1, myTesting$classe)$overall[1] #accuracy of 0.7295
+fit1b <- train(training$classe ~ .,  preProcess=c("center", "scale"), trControl=trainControl(method = "cv", number = 4), data = training, method="rpart")
+print(fit1b, digits=3)
+set.seed(500)
+predict <- predict(fit1b, newdata=testing)
+print(confusionMatrix(predict, testing$classe)$overall[1], digits=4)
 ```
 
 ##Random Forest
+Model with Cross Validation
 ```{r}
-fit2 <- randomForest(classe ~. , data=myTraining)
-predict2 <- predict(fitt2, myTesting, type = "class")
-confusionMatrix(predict2, myTesting$classe)$overall[1] #accuracy of 0.8193
+fit2 <- train(training$classe ~ ., method="rf", trControl=trainControl(method = "cv", number = 4), data=training)
+print(fit2, digits=3)
+```
+
+Testing
+```{r}
+set.seed(500)
+predict2 <- predict(fit2, newdata=testing)
+print(confusionMatrix(predict2, testing$classe)$overall[1], digits=4)
+```
+
+```{r}
+fit2b <- train(training$classe ~ ., method="rf", preProcess=c("center", "scale"), trControl=trainControl(method = "cv", number = 4), data=training)
+print(fit2b, digits=3)
+predict2b <- predict(fit2, newdata=testing)
+print(confusionMatrix(predict2b, testing$classe)$overall[1], digits=4)
 ```
 
 
+#Testing The Best Model
+The best model was clearly using Random Forest with Crossed Validation (although using both - Crossed Validation and Preprocess - had a very high accuracy), now I will test it with the provided test set to answer the quiz questions.
+```{r}
+prediction <- predict(fit2, newdata=test)
+prediction
+```
+
 #Conclussion
-The Random Forest model was the best one of all tested models, as it was expected, and it is the recomended model for future predictions for this specific dataset.
+The best model was random forest, with which I actually got 100% on the quiz.
+
+
+
+
+
+
+
 
